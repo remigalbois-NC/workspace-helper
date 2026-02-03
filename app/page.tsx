@@ -3,7 +3,7 @@ import { useState, useEffect, useRef, useCallback } from "react";
 import { useSession, signOut, signIn } from "next-auth/react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
-import { Send, Bot, User, Sparkles, LogOut, Loader2, MessageSquare, Plus, ShieldCheck, CheckCircle2, Zap } from "lucide-react";
+import { Send, Bot, User, Sparkles, LogOut, Loader2, MessageSquare, Plus, ShieldCheck, CheckCircle2, Zap, Trash2, Moon, Sun } from "lucide-react";
 
 const WELCOME_MESSAGE = "Bonjour ! Je suis ton **Expert Workspace**. Comment puis-je optimiser ton travail aujourd'hui ?";
 
@@ -20,6 +20,7 @@ interface Discussion {
 }
 
 const STORAGE_KEY = "workspace-helper-discussions";
+const DARK_MODE_KEY = "workspace-helper-dark-mode";
 
 function createNewDiscussion(): Discussion {
   return {
@@ -51,6 +52,25 @@ function saveDiscussionsToStorage(discussions: Discussion[]) {
   }
 }
 
+function loadDarkModePreference(): boolean {
+  if (typeof window === "undefined") return false;
+  try {
+    const saved = localStorage.getItem(DARK_MODE_KEY);
+    return saved === "true";
+  } catch {
+    return false;
+  }
+}
+
+function saveDarkModePreference(isDark: boolean) {
+  if (typeof window === "undefined") return;
+  try {
+    localStorage.setItem(DARK_MODE_KEY, String(isDark));
+  } catch {
+    // ignore
+  }
+}
+
 export default function ChatPage() {
   const { data: session, status } = useSession();
   const [input, setInput] = useState("");
@@ -58,41 +78,60 @@ export default function ChatPage() {
   const [activeDiscussionId, setActiveDiscussionId] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [hydrated, setHydrated] = useState(false);
+  const [darkMode, setDarkMode] = useState(false);
+  const [hoveredDiscussionId, setHoveredDiscussionId] = useState<string | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const previousStatusRef = useRef<string | null>(null);
 
-  // Réinitialisation à chaque connexion : vider le localStorage et créer une nouvelle discussion
+  // Charger le mode sombre au démarrage
   useEffect(() => {
-    // Détecter quand on passe de "unauthenticated" ou "loading" à "authenticated"
-    const isNewConnection = previousStatusRef.current !== "authenticated" && status === "authenticated";
-    
-    if (status === "authenticated") {
-      // À chaque nouvelle connexion, réinitialiser complètement
-      if (isNewConnection) {
-        // Vider le localStorage pour réinitialiser complètement
-        if (typeof window !== "undefined") {
-          localStorage.removeItem(STORAGE_KEY);
-        }
-        // Créer une nouvelle discussion vide
+    const savedDarkMode = loadDarkModePreference();
+    setDarkMode(savedDarkMode);
+    if (savedDarkMode) {
+      document.documentElement.classList.add("dark");
+    }
+  }, []);
+
+  // Appliquer/retirer le mode sombre
+  useEffect(() => {
+    if (darkMode) {
+      document.documentElement.classList.add("dark");
+    } else {
+      document.documentElement.classList.remove("dark");
+    }
+    saveDarkModePreference(darkMode);
+  }, [darkMode]);
+
+  // Charger les discussions depuis le localStorage au démarrage
+  useEffect(() => {
+    if (status === "authenticated" && !hydrated) {
+      // Charger les discussions depuis le localStorage
+      const savedDiscussions = loadDiscussionsFromStorage();
+      
+      if (savedDiscussions.length > 0) {
+        // Restaurer les discussions sauvegardées
+        setDiscussions(savedDiscussions);
+        // Sélectionner la première discussion ou la dernière active
+        setActiveDiscussionId(savedDiscussions[0].id);
+      } else {
+        // Si aucune discussion n'existe, créer une nouvelle discussion
         const first = createNewDiscussion();
         setDiscussions([first]);
         setActiveDiscussionId(first.id);
-        setHydrated(true);
-      } else if (!hydrated) {
-        // Si pas encore hydraté (première fois), créer une nouvelle discussion
-        const first = createNewDiscussion();
-        setDiscussions([first]);
-        setActiveDiscussionId(first.id);
-        setHydrated(true);
       }
+      
+      setHydrated(true);
       previousStatusRef.current = "authenticated";
     } else if (status === "unauthenticated") {
-      // Réinitialiser quand l'utilisateur se déconnecte
+      // Réinitialiser complètement lors de la déconnexion
+      if (typeof window !== "undefined") {
+        localStorage.removeItem(STORAGE_KEY);
+      }
       previousStatusRef.current = "unauthenticated";
       setDiscussions([]);
       setActiveDiscussionId(null);
       setHydrated(false);
-    } else {
+    } else if (status === "loading") {
       previousStatusRef.current = status;
     }
   }, [status, hydrated]);
@@ -131,6 +170,30 @@ export default function ChatPage() {
 
   const handleSelectDiscussion = useCallback((id: string) => {
     setActiveDiscussionId(id);
+  }, []);
+
+  const handleDeleteDiscussion = useCallback((id: string, e: React.MouseEvent) => {
+    e.stopPropagation(); // Empêcher la sélection de la discussion
+    if (window.confirm("Êtes-vous sûr de vouloir supprimer cette discussion ?")) {
+      setDiscussions((prev) => {
+        const filtered = prev.filter((d) => d.id !== id);
+        // Si on supprime la discussion active, sélectionner une autre ou créer une nouvelle
+        if (activeDiscussionId === id) {
+          if (filtered.length > 0) {
+            setActiveDiscussionId(filtered[0].id);
+          } else {
+            const newDisc = createNewDiscussion();
+            setActiveDiscussionId(newDisc.id);
+            return [newDisc];
+          }
+        }
+        return filtered;
+      });
+    }
+  }, [activeDiscussionId]);
+
+  const toggleDarkMode = useCallback(() => {
+    setDarkMode((prev) => !prev);
   }, []);
 
   // Afficher la page de login si l'utilisateur n'est pas connecté
@@ -392,6 +455,26 @@ export default function ChatPage() {
     }
   };
 
+  // Styles pour le mode sombre
+  const sidebarBg = darkMode ? "#0f172a" : "#0f172a";
+  const sidebarBorder = darkMode ? "#1e293b" : "#1e293b";
+  const sidebarHover = darkMode ? "#1e293b" : "#1e293b";
+  const sidebarActive = darkMode ? "#1e293b" : "#1e293b";
+  const sidebarText = darkMode ? "#f1f5f9" : "#f1f5f9";
+  const sidebarTextSecondary = darkMode ? "#94a3b8" : "#94a3b8";
+  const mainBg = darkMode ? "#0f172a" : "#fff";
+  const headerBg = darkMode ? "rgba(15, 23, 42, 0.8)" : "rgba(255,255,255,0.8)";
+  const headerBorder = darkMode ? "#1e293b" : "#f1f5f9";
+  const headerText = darkMode ? "#f1f5f9" : "#0f172a";
+  const inputBg = darkMode ? "#1e293b" : "#fff";
+  const inputBorder = darkMode ? "#334155" : "#e2e8f0";
+  const inputText = darkMode ? "#f1f5f9" : "#1e293b";
+  const messageBotBg = darkMode ? "#1e293b" : "#fff";
+  const messageBotBorder = darkMode ? "#334155" : "#f1f5f9";
+  const messageBotText = darkMode ? "#f1f5f9" : "#1e293b";
+  const messageUserBg = darkMode ? "#2563eb" : "#2563eb";
+  const messageUserText = darkMode ? "#fff" : "#fff";
+
   if (status !== "authenticated" || !hydrated) {
     return (
       <div
@@ -400,7 +483,7 @@ export default function ChatPage() {
           display: "flex",
           alignItems: "center",
           justifyContent: "center",
-          backgroundColor: "#fff",
+          backgroundColor: darkMode ? "#0f172a" : "#fff",
         }}
       >
         <Loader2 className="animate-spin" size={40} color="#1a73e8" />
@@ -414,20 +497,21 @@ export default function ChatPage() {
         display: "flex",
         height: "100vh",
         width: "100vw",
-        backgroundColor: "#fff",
+        backgroundColor: mainBg,
         overflow: "hidden",
         fontFamily: "Inter, system-ui, sans-serif",
+        color: darkMode ? "#f1f5f9" : "#1e293b",
       }}
     >
       {/* SIDEBAR */}
       <aside
         style={{
           width: "300px",
-          backgroundColor: "#0f172a",
-          color: "#f1f5f9",
+          backgroundColor: sidebarBg,
+          color: sidebarText,
           display: "flex",
           flexDirection: "column",
-          borderRight: "1px solid #1e293b",
+          borderRight: `1px solid ${sidebarBorder}`,
         }}
       >
         <div style={{ padding: "24px" }}>
@@ -472,26 +556,17 @@ export default function ChatPage() {
             <div
               key={d.id}
               onClick={() => handleSelectDiscussion(d.id)}
+              onMouseEnter={() => setHoveredDiscussionId(d.id)}
+              onMouseLeave={() => setHoveredDiscussionId(null)}
               style={{
                 padding: "12px",
                 borderRadius: "10px",
                 marginBottom: "8px",
                 cursor: "pointer",
-                backgroundColor: d.id === activeDiscussionId ? "#1e293b" : "transparent",
+                backgroundColor: d.id === activeDiscussionId ? sidebarActive : "transparent",
                 border: `1px solid ${d.id === activeDiscussionId ? "#334155" : "transparent"}`,
                 transition: "background 0.2s",
-              }}
-              onMouseOver={(e) => {
-                if (d.id !== activeDiscussionId) {
-                  e.currentTarget.style.backgroundColor = "#1e293b";
-                  e.currentTarget.style.borderColor = "#334155";
-                }
-              }}
-              onMouseOut={(e) => {
-                if (d.id !== activeDiscussionId) {
-                  e.currentTarget.style.backgroundColor = "transparent";
-                  e.currentTarget.style.borderColor = "transparent";
-                }
+                position: "relative",
               }}
             >
               <div
@@ -499,7 +574,7 @@ export default function ChatPage() {
                   display: "flex",
                   alignItems: "center",
                   gap: "8px",
-                  color: "#94a3b8",
+                  color: sidebarTextSecondary,
                   fontSize: "12px",
                   marginBottom: "4px",
                 }}
@@ -514,26 +589,65 @@ export default function ChatPage() {
               </div>
               <div
                 style={{
-                  fontSize: "13px",
-                  color: "#cbd5e1",
-                  overflow: "hidden",
-                  textOverflow: "ellipsis",
-                  display: "-webkit-box",
-                  WebkitLineClamp: 2,
-                  WebkitBoxOrient: "vertical",
-                  lineHeight: "1.5",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                  gap: "8px",
                 }}
               >
-                {d.title}
+                <div
+                  style={{
+                    fontSize: "13px",
+                    color: sidebarText,
+                    overflow: "hidden",
+                    textOverflow: "ellipsis",
+                    display: "-webkit-box",
+                    WebkitLineClamp: 2,
+                    WebkitBoxOrient: "vertical",
+                    lineHeight: "1.5",
+                    flex: 1,
+                  }}
+                >
+                  {d.title}
+                </div>
+                {(hoveredDiscussionId === d.id || d.id === activeDiscussionId) && (
+                  <button
+                    onClick={(e) => handleDeleteDiscussion(d.id, e)}
+                    style={{
+                      padding: "4px",
+                      backgroundColor: "transparent",
+                      border: "none",
+                      color: sidebarTextSecondary,
+                      cursor: "pointer",
+                      borderRadius: "4px",
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      transition: "all 0.2s",
+                      flexShrink: 0,
+                    }}
+                    onMouseOver={(e) => {
+                      e.currentTarget.style.backgroundColor = "rgba(239, 68, 68, 0.1)";
+                      e.currentTarget.style.color = "#ef4444";
+                    }}
+                    onMouseOut={(e) => {
+                      e.currentTarget.style.backgroundColor = "transparent";
+                      e.currentTarget.style.color = sidebarTextSecondary;
+                    }}
+                    title="Supprimer cette discussion"
+                  >
+                    <Trash2 size={14} />
+                  </button>
+                )}
               </div>
             </div>
           ))}
         </div>
 
-        <div style={{ padding: "20px", borderTop: "1px solid #1e293b", backgroundColor: "#020617" }}>
+        <div style={{ padding: "20px", borderTop: `1px solid ${sidebarBorder}`, backgroundColor: darkMode ? "#020617" : "#020617" }}>
           <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
             <span style={{ fontSize: "12px", fontWeight: "500" }}>{session?.user?.name}</span>
-            <LogOut size={16} style={{ cursor: "pointer", color: "#94a3b8" }} onClick={() => signOut({ callbackUrl: "/login" })} />
+            <LogOut size={16} style={{ cursor: "pointer", color: sidebarTextSecondary }} onClick={() => signOut({ callbackUrl: "/login" })} />
           </div>
         </div>
       </aside>
@@ -543,12 +657,12 @@ export default function ChatPage() {
         <header
           style={{
             height: "70px",
-            borderBottom: "1px solid #f1f5f9",
+            borderBottom: `1px solid ${headerBorder}`,
             display: "flex",
             alignItems: "center",
             justifyContent: "space-between",
             padding: "0 32px",
-            backgroundColor: "rgba(255,255,255,0.8)",
+            backgroundColor: headerBg,
             backdropFilter: "blur(10px)",
             position: "sticky",
             top: 0,
@@ -556,28 +670,53 @@ export default function ChatPage() {
           }}
         >
           <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
-            <div style={{ backgroundColor: "#eff6ff", padding: "8px", borderRadius: "10px" }}>
-              <Bot color="#2563eb" size={24} />
+            <div style={{ backgroundColor: darkMode ? "#1e293b" : "#eff6ff", padding: "8px", borderRadius: "10px" }}>
+              <Bot color={darkMode ? "#60a5fa" : "#2563eb"} size={24} />
             </div>
-            <h1 style={{ fontSize: "18px", fontWeight: "700", color: "#0f172a" }}>Workspace Helper</h1>
+            <h1 style={{ fontSize: "18px", fontWeight: "700", color: headerText }}>Workspace Helper</h1>
           </div>
-          <div
-            style={{
-              display: "flex",
-              alignItems: "center",
-              gap: "8px",
-              backgroundColor: "#f8fafc",
-              padding: "6px 12px",
-              borderRadius: "20px",
-              border: "1px solid #e2e8f0",
-            }}
-          >
-            <Sparkles size={14} color="#f59e0b" />
-            <span style={{ fontSize: "12px", fontWeight: "600", color: "#475569" }}>Gemini 2.0 Flash</span>
+          <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
+            <button
+              onClick={toggleDarkMode}
+              style={{
+                padding: "8px",
+                backgroundColor: darkMode ? "#1e293b" : "#f8fafc",
+                border: `1px solid ${darkMode ? "#334155" : "#e2e8f0"}`,
+                borderRadius: "8px",
+                cursor: "pointer",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                transition: "all 0.2s",
+              }}
+              onMouseOver={(e) => {
+                e.currentTarget.style.backgroundColor = darkMode ? "#334155" : "#f1f5f9";
+              }}
+              onMouseOut={(e) => {
+                e.currentTarget.style.backgroundColor = darkMode ? "#1e293b" : "#f8fafc";
+              }}
+              title={darkMode ? "Activer le mode clair" : "Activer le mode sombre"}
+            >
+              {darkMode ? <Sun size={18} color="#fbbf24" /> : <Moon size={18} color="#475569" />}
+            </button>
+            <div
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: "8px",
+                backgroundColor: darkMode ? "#1e293b" : "#f8fafc",
+                padding: "6px 12px",
+                borderRadius: "20px",
+                border: `1px solid ${darkMode ? "#334155" : "#e2e8f0"}`,
+              }}
+            >
+              <Sparkles size={14} color="#f59e0b" />
+              <span style={{ fontSize: "12px", fontWeight: "600", color: darkMode ? "#cbd5e1" : "#475569" }}>Gemini 2.0 Flash</span>
+            </div>
           </div>
         </header>
 
-        <div style={{ flex: 1, overflowY: "auto", padding: "40px 0" }}>
+        <div style={{ flex: 1, overflowY: "auto", padding: "40px 0", backgroundColor: darkMode ? "#0f172a" : "#fff" }}>
           <div style={{ maxWidth: "850px", margin: "0 auto", padding: "0 24px" }}>
             {messages.map((m, i) => (
               <div
@@ -601,24 +740,24 @@ export default function ChatPage() {
                       width: "36px",
                       height: "36px",
                       borderRadius: "10px",
-                      backgroundColor: m.role === "bot" ? "#eff6ff" : "#f8fafc",
+                      backgroundColor: darkMode ? (m.role === "bot" ? "#1e293b" : "#334155") : (m.role === "bot" ? "#eff6ff" : "#f8fafc"),
                       display: "flex",
                       alignItems: "center",
                       justifyContent: "center",
                       flexShrink: 0,
-                      border: "1px solid #e2e8f0",
+                      border: `1px solid ${darkMode ? "#334155" : "#e2e8f0"}`,
                     }}
                   >
-                    {m.role === "bot" ? <Bot size={20} color="#2563eb" /> : <User size={20} color="#64748b" />}
+                    {m.role === "bot" ? <Bot size={20} color={darkMode ? "#60a5fa" : "#2563eb"} /> : <User size={20} color={darkMode ? "#94a3b8" : "#64748b"} />}
                   </div>
                   <div
                     style={{
-                      backgroundColor: m.role === "user" ? "#2563eb" : "#fff",
-                      color: m.role === "user" ? "#fff" : "#1e293b",
+                      backgroundColor: m.role === "user" ? messageUserBg : messageBotBg,
+                      color: m.role === "user" ? messageUserText : messageBotText,
                       padding: "16px 20px",
                       borderRadius: "18px",
-                      border: m.role === "bot" ? "1px solid #f1f5f9" : "none",
-                      boxShadow: m.role === "bot" ? "0 4px 6px -1px rgba(0,0,0,0.05)" : "none",
+                      border: m.role === "bot" ? `1px solid ${messageBotBorder}` : "none",
+                      boxShadow: m.role === "bot" ? (darkMode ? "0 4px 6px -1px rgba(0,0,0,0.3)" : "0 4px 6px -1px rgba(0,0,0,0.05)") : "none",
                     }}
                   >
                     <div style={{ fontSize: "15px", lineHeight: "1.65" }} className="markdown-content">
@@ -636,7 +775,7 @@ export default function ChatPage() {
                                 fontSize: "1.05em",
                                 fontWeight: 700,
                                 color: "inherit",
-                                borderBottom: "1px solid #e2e8f0",
+                                borderBottom: `1px solid ${darkMode ? "#334155" : "#e2e8f0"}`,
                               }}
                             >
                               {children}
@@ -668,7 +807,7 @@ export default function ChatPage() {
                               style={{
                                 margin: "0.75em 0",
                                 paddingLeft: "1em",
-                                borderLeft: "4px solid #2563eb",
+                                borderLeft: `4px solid ${darkMode ? "#60a5fa" : "#2563eb"}`,
                                 opacity: 0.95,
                                 color: "inherit",
                               }}
@@ -683,7 +822,7 @@ export default function ChatPage() {
                                 style={{
                                   padding: "0.2em 0.4em",
                                   borderRadius: "4px",
-                                  backgroundColor: "rgba(0,0,0,0.06)",
+                                  backgroundColor: darkMode ? "rgba(255,255,255,0.1)" : "rgba(0,0,0,0.06)",
                                   fontSize: "0.9em",
                                 }}
                                 {...props}
@@ -695,7 +834,7 @@ export default function ChatPage() {
                                 style={{
                                   padding: "0.2em 0.4em",
                                   borderRadius: "4px",
-                                  backgroundColor: "rgba(0,0,0,0.06)",
+                                  backgroundColor: darkMode ? "rgba(255,255,255,0.1)" : "rgba(0,0,0,0.06)",
                                   fontSize: "0.9em",
                                 }}
                                 {...props}
@@ -710,7 +849,7 @@ export default function ChatPage() {
                                 padding: "12px",
                                 borderRadius: "8px",
                                 overflow: "auto",
-                                backgroundColor: "rgba(0,0,0,0.06)",
+                                backgroundColor: darkMode ? "rgba(0,0,0,0.3)" : "rgba(0,0,0,0.06)",
                                 fontSize: "0.9em",
                               }}
                             >
@@ -734,17 +873,17 @@ export default function ChatPage() {
                     width: "36px",
                     height: "36px",
                     borderRadius: "10px",
-                    backgroundColor: "#eff6ff",
+                    backgroundColor: darkMode ? "#1e293b" : "#eff6ff",
                     display: "flex",
                     alignItems: "center",
                     justifyContent: "center",
                   }}
                 >
-                  <Bot size={20} color="#2563eb" className="animate-pulse" />
+                  <Bot size={20} color={darkMode ? "#60a5fa" : "#2563eb"} className="animate-pulse" />
                 </div>
                 <div
                   style={{
-                    backgroundColor: "#f8fafc",
+                    backgroundColor: darkMode ? "#1e293b" : "#f8fafc",
                     padding: "16px",
                     borderRadius: "18px",
                     color: "#94a3b8",
@@ -759,7 +898,7 @@ export default function ChatPage() {
           </div>
         </div>
 
-        <div style={{ padding: "24px 32px", borderTop: "1px solid #f1f5f9" }}>
+        <div style={{ padding: "24px 32px", borderTop: `1px solid ${headerBorder}`, backgroundColor: darkMode ? "#0f172a" : "#fff" }}>
           <div
             style={{
               maxWidth: "850px",
@@ -778,15 +917,16 @@ export default function ChatPage() {
                 width: "100%",
                 padding: "18px 60px 18px 24px",
                 borderRadius: "16px",
-                border: "1px solid #e2e8f0",
-                backgroundColor: "#fff",
+                border: `1px solid ${inputBorder}`,
+                backgroundColor: inputBg,
+                color: inputText,
                 fontSize: "15px",
                 outline: "none",
-                boxShadow: "0 10px 15px -3px rgba(0,0,0,0.05)",
+                boxShadow: darkMode ? "0 10px 15px -3px rgba(0,0,0,0.3)" : "0 10px 15px -3px rgba(0,0,0,0.05)",
                 transition: "border-color 0.2s",
               }}
               onFocus={(e) => (e.currentTarget.style.borderColor = "#2563eb")}
-              onBlur={(e) => (e.currentTarget.style.borderColor = "#e2e8f0")}
+              onBlur={(e) => (e.currentTarget.style.borderColor = inputBorder)}
             />
             <button
               onClick={handleSend}
@@ -795,8 +935,8 @@ export default function ChatPage() {
                 position: "absolute",
                 right: "12px",
                 padding: "10px",
-                backgroundColor: input.trim() ? "#2563eb" : "#f1f5f9",
-                color: input.trim() ? "#fff" : "#cbd5e1",
+                backgroundColor: input.trim() ? "#2563eb" : (darkMode ? "#334155" : "#f1f5f9"),
+                color: input.trim() ? "#fff" : (darkMode ? "#64748b" : "#cbd5e1"),
                 border: "none",
                 borderRadius: "12px",
                 cursor: "pointer",
@@ -806,7 +946,7 @@ export default function ChatPage() {
               <Send size={20} />
             </button>
           </div>
-          <p style={{ textAlign: "center", fontSize: "11px", color: "#94a3b8", marginTop: "16px" }}>
+          <p style={{ textAlign: "center", fontSize: "11px", color: darkMode ? "#64748b" : "#94a3b8", marginTop: "16px" }}>
             Propulsé par Numericoach & Gemini 2.0 • 2026
           </p>
         </div>
