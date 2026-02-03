@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getGoogleHelpResponse } from "../../../Chatbot-template/Chatbot/tools/google-center.js";
+import { getGoogleHelpResponse } from "@/tools/google-center.js";
 import { GoogleGenAI, type Content, type FunctionDeclaration, type FunctionCall, type GenerateContentResponse, Type, FunctionCallingConfigMode } from "@google/genai";
 
 const COACH_SYSTEM_PROMPT = `

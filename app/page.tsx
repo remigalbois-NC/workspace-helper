@@ -59,22 +59,43 @@ export default function ChatPage() {
   const [isLoading, setIsLoading] = useState(false);
   const [hydrated, setHydrated] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const previousStatusRef = useRef<string | null>(null);
 
-  // Hydration: load from localStorage once, or create first discussion
+  // Réinitialisation à chaque connexion : vider le localStorage et créer une nouvelle discussion
   useEffect(() => {
+    // Détecter quand on passe de "unauthenticated" ou "loading" à "authenticated"
+    const isNewConnection = previousStatusRef.current !== "authenticated" && status === "authenticated";
+    
     if (status === "authenticated") {
-      const stored = loadDiscussionsFromStorage();
-      if (stored.length > 0) {
-        setDiscussions(stored);
-        setActiveDiscussionId(stored[0].id);
-      } else {
+      // À chaque nouvelle connexion, réinitialiser complètement
+      if (isNewConnection) {
+        // Vider le localStorage pour réinitialiser complètement
+        if (typeof window !== "undefined") {
+          localStorage.removeItem(STORAGE_KEY);
+        }
+        // Créer une nouvelle discussion vide
         const first = createNewDiscussion();
         setDiscussions([first]);
         setActiveDiscussionId(first.id);
+        setHydrated(true);
+      } else if (!hydrated) {
+        // Si pas encore hydraté (première fois), créer une nouvelle discussion
+        const first = createNewDiscussion();
+        setDiscussions([first]);
+        setActiveDiscussionId(first.id);
+        setHydrated(true);
       }
-      setHydrated(true);
+      previousStatusRef.current = "authenticated";
+    } else if (status === "unauthenticated") {
+      // Réinitialiser quand l'utilisateur se déconnecte
+      previousStatusRef.current = "unauthenticated";
+      setDiscussions([]);
+      setActiveDiscussionId(null);
+      setHydrated(false);
+    } else {
+      previousStatusRef.current = status;
     }
-  }, [status]);
+  }, [status, hydrated]);
 
   // Persist discussions when they change (after hydration)
   useEffect(() => {
