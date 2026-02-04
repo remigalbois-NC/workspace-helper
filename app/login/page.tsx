@@ -10,7 +10,7 @@ export default function LoginPage() {
           <div className="auth-logo">
             <Bot size={28} strokeWidth={2.5} />
           </div>
-          <h1 className="auth-product-name">Workspace Helper</h1>
+          <h1 className="auth-product-name">Google Workspace Helper</h1>
           <p className="auth-product-tagline">
             Votre assistant expert Google Workspace, par Numericoach.
           </p>

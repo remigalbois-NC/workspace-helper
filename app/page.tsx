@@ -71,6 +71,70 @@ function saveDarkModePreference(isDark: boolean) {
   }
 }
 
+function generateTitleFromMessage(message: string): string {
+  const cleaned = message.trim().replace(/[!?\.]+$/g, "");
+  if (!cleaned) return "Nouvelle discussion";
+
+  // Retirer quelques débuts de phrases fréquents ("comment", "je veux", etc.)
+  let base = cleaned
+    .replace(/^comment\s+/i, "")
+    .replace(/^comment faire pour\s+/i, "")
+    .replace(/^comment est-ce que\s+/i, "")
+    .replace(/^je veux\s+/i, "")
+    .replace(/^j'aimerais\s+/i, "")
+    .replace(/^j aimerais\s+/i, "")
+    .trim();
+
+  if (!base) base = cleaned;
+
+  let words = base.split(/\s+/);
+
+  // Si la phrase est un peu longue, on enlève le premier mot (souvent un verbe : changer, créer, partager…)
+  if (words.length > 3) {
+    words = words.slice(1);
+  }
+
+  // Retirer les articles de début (le, la, les, un, une, des…)
+  const articles = ["le", "la", "les", "un", "une", "des", "du", "de", "d'", "l'"];
+  while (words.length && articles.includes(words[0].toLowerCase())) {
+    words = words.slice(1);
+  }
+
+  // Garder un petit groupe de mots (court et lisible en sidebar)
+  const maxWords = 4;
+  const selected = words.slice(0, maxWords);
+  let title = selected.join(" ");
+
+  if (!title) return "Nouvelle discussion";
+
+  // Mettre simplement la première lettre en majuscule, garder le reste tel quel (pour respecter Gmail, Drive, etc.)
+  title = title.charAt(0).toUpperCase() + title.slice(1);
+
+  // Assurer la présence d'un mot-clé Google Workspace (Gmail, Drive, Sheets, etc.) si la demande en contient
+  const PRODUCT_KEYWORDS = [
+    "Gmail",
+    "Drive",
+    "Docs",
+    "Sheets",
+    "Slides",
+    "Forms",
+    "Meet",
+    "Chat",
+    "Calendar",
+    "Sites"
+  ];
+
+  const foundProduct = PRODUCT_KEYWORDS.find((p) =>
+    new RegExp(`\\b${p}\\b`, "i").test(cleaned)
+  );
+
+  if (foundProduct && !new RegExp(`\\b${foundProduct}\\b`, "i").test(title)) {
+    title = `${foundProduct} – ${title}`;
+  }
+
+  return title;
+}
+
 export default function ChatPage() {
   const { data: session, status } = useSession();
   const [input, setInput] = useState("");
@@ -158,9 +222,8 @@ export default function ChatPage() {
         if (d.id !== activeDiscussionId) return d;
         const firstUser = d.messages.find((m) => m.role === "user");
         if (!firstUser || d.title !== "Nouvelle discussion") return d;
-        const newTitle =
-          (firstUser.content.slice(0, 50).trim() || "Nouvelle discussion") +
-          (firstUser.content.length > 50 ? "…" : "");
+        // Générer un titre court et parlant à partir du premier message utilisateur
+        const newTitle = generateTitleFromMessage(firstUser.content);
         return { ...d, title: newTitle };
       });
       return [newDisc, ...withUpdatedTitle];
@@ -205,7 +268,7 @@ export default function ChatPage() {
             <div className="auth-logo">
               <Bot size={28} strokeWidth={2.5} />
             </div>
-            <h1 className="auth-product-name">Workspace Helper</h1>
+            <h1 className="auth-product-name">Google Workspace Helper</h1>
             <p className="auth-product-tagline">
               Votre assistant expert Google Workspace, par Numericoach.
             </p>
@@ -305,18 +368,22 @@ export default function ChatPage() {
     ];
 
     setDiscussions((prev) =>
-      prev.map((d) =>
-        d.id === currentId
-          ? {
-              ...d,
-              title:
-                d.title === "Nouvelle discussion" && !d.messages.some((m) => m.role === "user")
-                  ? userMsg.slice(0, 50).trim() + (userMsg.length > 50 ? "…" : "") || "Nouvelle discussion"
-                  : d.title,
-              messages: [...d.messages, { role: "user", content: userMsg }],
-            }
-          : d
-      )
+      prev.map((d) => {
+        if (d.id !== currentId) return d;
+
+        // Vérifier si c'est le premier message utilisateur
+        const hasUserMessage = d.messages.some((m) => m.role === "user");
+        const shouldUpdateTitle = d.title === "Nouvelle discussion" && !hasUserMessage;
+
+        // Générer un titre court et parlant à partir du message utilisateur
+        const newTitle = shouldUpdateTitle ? generateTitleFromMessage(userMsg) : d.title;
+
+        return {
+          ...d,
+          title: newTitle,
+          messages: [...d.messages, { role: "user", content: userMsg }],
+        };
+      })
     );
     setIsLoading(true);
 
@@ -571,21 +638,19 @@ export default function ChatPage() {
             >
               <div
                 style={{
-                  display: "flex",
-                  alignItems: "center",
-                  gap: "8px",
-                  color: sidebarTextSecondary,
-                  fontSize: "12px",
-                  marginBottom: "4px",
+                  fontSize: "14px",
+                  fontWeight: "600",
+                  color: sidebarText,
+                  overflow: "hidden",
+                  textOverflow: "ellipsis",
+                  display: "-webkit-box",
+                  WebkitLineClamp: 2,
+                  WebkitBoxOrient: "vertical",
+                  lineHeight: "1.4",
+                  marginBottom: "6px",
                 }}
               >
-                <MessageSquare size={12} />
-                <span>
-                  {new Date(d.createdAt).toLocaleDateString("fr-FR", {
-                    day: "numeric",
-                    month: "short",
-                  })}
-                </span>
+                {d.title}
               </div>
               <div
                 style={{
@@ -597,18 +662,20 @@ export default function ChatPage() {
               >
                 <div
                   style={{
-                    fontSize: "13px",
-                    color: sidebarText,
-                    overflow: "hidden",
-                    textOverflow: "ellipsis",
-                    display: "-webkit-box",
-                    WebkitLineClamp: 2,
-                    WebkitBoxOrient: "vertical",
-                    lineHeight: "1.5",
-                    flex: 1,
+                    display: "flex",
+                    alignItems: "center",
+                    gap: "8px",
+                    color: sidebarTextSecondary,
+                    fontSize: "11px",
                   }}
                 >
-                  {d.title}
+                  <MessageSquare size={12} />
+                  <span>
+                    {new Date(d.createdAt).toLocaleDateString("fr-FR", {
+                      day: "numeric",
+                      month: "short",
+                    })}
+                  </span>
                 </div>
                 {(hoveredDiscussionId === d.id || d.id === activeDiscussionId) && (
                   <button
@@ -645,10 +712,42 @@ export default function ChatPage() {
         </div>
 
         <div style={{ padding: "20px", borderTop: `1px solid ${sidebarBorder}`, backgroundColor: darkMode ? "#020617" : "#020617" }}>
-          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+          <div style={{ marginBottom: "10px", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
             <span style={{ fontSize: "12px", fontWeight: "500" }}>{session?.user?.name}</span>
             <LogOut size={16} style={{ cursor: "pointer", color: sidebarTextSecondary }} onClick={() => signOut({ callbackUrl: "/login" })} />
           </div>
+          <a
+            href="/support"
+            style={{
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              gap: "8px",
+              marginTop: "6px",
+              padding: "8px 10px",
+              borderRadius: "8px",
+              border: `1px solid ${sidebarBorder}`,
+              color: sidebarTextSecondary,
+              fontSize: "11px",
+              textDecoration: "none",
+              cursor: "pointer",
+              transition: "all 0.2s",
+              backgroundColor: "transparent",
+            }}
+            onMouseOver={(e) => {
+              e.currentTarget.style.backgroundColor = "#1e293b";
+              e.currentTarget.style.borderColor = "#334155";
+              e.currentTarget.style.color = "#e2e8f0";
+            }}
+            onMouseOut={(e) => {
+              e.currentTarget.style.backgroundColor = "transparent";
+              e.currentTarget.style.borderColor = sidebarBorder;
+              e.currentTarget.style.color = sidebarTextSecondary;
+            }}
+          >
+            <ShieldCheck size={13} />
+            <span>Contacter le support</span>
+          </a>
         </div>
       </aside>
 
@@ -673,7 +772,7 @@ export default function ChatPage() {
             <div style={{ backgroundColor: darkMode ? "#1e293b" : "#eff6ff", padding: "8px", borderRadius: "10px" }}>
               <Bot color={darkMode ? "#60a5fa" : "#2563eb"} size={24} />
             </div>
-            <h1 style={{ fontSize: "18px", fontWeight: "700", color: headerText }}>Workspace Helper</h1>
+            <h1 style={{ fontSize: "18px", fontWeight: "700", color: headerText }}>Google Workspace Helper</h1>
           </div>
           <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
             <button

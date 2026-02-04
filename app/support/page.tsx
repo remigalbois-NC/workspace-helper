@@ -5,6 +5,7 @@ import { Bot, ShieldCheck, MessageSquare, CheckCircle2 } from "lucide-react";
 export default function SupportPage() {
   const [subject, setSubject] = useState("");
   const [message, setMessage] = useState("");
+  const [email, setEmail] = useState("");
   const [loading, setLoading] = useState(false);
   const [success, setSuccess] = useState(false);
   const [error, setError] = useState("");
@@ -21,13 +22,14 @@ export default function SupportPage() {
         headers: {
           "Content-Type": "application/json",
         },
-        body: JSON.stringify({ subject, message }),
+        body: JSON.stringify({ subject, message, email }),
       });
 
       if (response.ok) {
         setSuccess(true);
         setSubject("");
         setMessage("");
+        setEmail("");
         setTimeout(() => setSuccess(false), 5000);
       } else {
         setError("Une erreur est survenue. Veuillez réessayer.");
@@ -46,7 +48,7 @@ export default function SupportPage() {
           <div className="auth-logo">
             <Bot size={28} strokeWidth={2.5} />
           </div>
-          <h1 className="auth-product-name">Workspace Helper</h1>
+          <h1 className="auth-product-name">Google Workspace Helper</h1>
           <p className="auth-product-tagline">
             Contactez le support de workspace helper.
           </p>
@@ -64,6 +66,39 @@ export default function SupportPage() {
 
           <div className="auth-body">
             <form onSubmit={handleSubmit} style={{ width: '100%' }}>
+              <div style={{ marginBottom: '1.5rem' }}>
+                <label 
+                  htmlFor="email" 
+                  style={{ 
+                    display: 'block', 
+                    marginBottom: '0.5rem',
+                    fontWeight: '500',
+                    fontSize: '0.875rem'
+                  }}
+                >
+                  Adresse e-mail
+                </label>
+                <input
+                  id="email"
+                  type="email"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  required
+                  placeholder="votre.adresse@entreprise.fr"
+                  style={{
+                    width: '100%',
+                    padding: '0.75rem',
+                    border: '1px solid #e5e7eb',
+                    borderRadius: '0.5rem',
+                    fontSize: '1rem',
+                    outline: 'none',
+                    transition: 'border-color 0.2s'
+                  }}
+                  onFocus={(e) => e.target.style.borderColor = '#3b82f6'}
+                  onBlur={(e) => e.target.style.borderColor = '#e5e7eb'}
+                />
+              </div>
+
               <div style={{ marginBottom: '1.5rem' }}>
                 <label 
                   htmlFor="subject" 
