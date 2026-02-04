@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getGoogleHelpResponse } from "@/tools/google-center.js";
+import { getGoogleHelpResponse, getGoogleWorkspaceAdminHelp } from "@/tools/google-center.js";
 import { GoogleGenAI, type Content, type FunctionDeclaration, type FunctionCall, type GenerateContentResponse, Type, FunctionCallingConfigMode } from "@google/genai";
 
 const COACH_SYSTEM_PROMPT = `
@@ -9,6 +9,8 @@ CONTEXTE
 Les utilisateurs sont en environnement professionnel avec des licences Google Workspace (domaines professionnels). Par défaut, réponds dans ce cadre : Workspace Business/Enterprise, pas Gmail grand public (@gmail.com).
 
 Lorsque c'est pertinent, signale les dernières nouveautés et mises à jour Google Workspace (fonctionnalités récentes, changements d'interface, nouvelles options).
+
+Tu as accès au centre d'aide Google Workspace Administrator (https://support.google.com/a/) pour récupérer des informations spécifiques aux administrateurs. Utilise cette ressource lorsque les questions concernent la gestion administrative, la configuration, ou les paramètres avancés de Google Workspace.
 
 1. TON & POSTURE
 Utilise le « tu » de façon professionnelle, sans ton condescendant ni pédagogie pour enfants.
@@ -94,6 +96,20 @@ const TOOLS: { functionDeclarations: FunctionDeclaration[] }[] = [
                     properties: { topicLink: { type: Type.STRING } },
                 },
             },
+            {
+                name: "getGoogleWorkspaceAdminHelp",
+                description: "Récupère le contenu du centre d'aide Google Workspace Administrator. Utilise cette fonction pour obtenir des informations spécifiques aux administrateurs Google Workspace depuis https://support.google.com/a/",
+                parameters: {
+                    type: Type.OBJECT,
+                    required: [],
+                    properties: { 
+                        url: { 
+                            type: Type.STRING,
+                            description: "URL du centre d'aide Google Workspace Administrator (par défaut: https://support.google.com/a/?hl=fr#topic=4388346)"
+                        } 
+                    },
+                },
+            },
         ],
     },
 ];
@@ -145,6 +161,7 @@ async function* streamGenerate(
         const isCompleteFunctionCall = (name: string, args: Record<string, unknown>) => {
             if (name === "searchGoogleHelp") return "query" in args && args.query != null && String(args.query).trim() !== "";
             if (name === "openGoogleTopic") return "topicLink" in args && args.topicLink != null && String(args.topicLink).trim() !== "";
+            if (name === "getGoogleWorkspaceAdminHelp") return true; // URL est optionnelle, a une valeur par défaut
             return false;
         };
 
@@ -166,6 +183,8 @@ async function* streamGenerate(
                     toolResult = await getGoogleHelpResponse(String(args.query ?? ""));
                 } else if (name === "openGoogleTopic") {
                     toolResult = await openGoogleTopic(String(args.topicLink ?? ""));
+                } else if (name === "getGoogleWorkspaceAdminHelp") {
+                    toolResult = await getGoogleWorkspaceAdminHelp(args.url ? String(args.url) : undefined);
                 } else {
                     toolResult = "Outil inconnu.";
                 }
